@@ -199,3 +199,26 @@ go test ./pkg/services/
 ├── docker-compose.yml       # Docker services
 └── Dockerfile              # Container build
 ```
+
+# Next Implementation(or what is it missing)
+
+## Security
+- JWT auth middleware
+- Rate limiting
+- Validation on inputs
+
+## Database
+- Migration for schema changes
+- Connection pooling
+
+## Monitoring
+- Metrics
+- Alerts
+
+## DevOps
+- Docker container limits and health checks
+- CI/CD
+- local/dev/prod environment
+
+## Other
+- Pagination
