@@ -1,10 +1,10 @@
 # Computer Management API
 
-A REST API for managing company-issued computers built with Go, GORM, and PostgreSQL/SQLite.
+A REST API for managing company-issued computers built with Go, GORM, and PostgreSQL/SQLite. Integrates with Greenbone notification service.
 
 ## Overview
 
-This API allows system administrators to track company-issued computers, assign them to employees, and receive notifications when an employee has 3 or more computers assigned.
+This API allows system administrators to track company-issued computers, assign them to employees, and receive notifications via the Greenbone notification service when an employee has 3 or more computers assigned.
 
 ## Architecture Diagram
 
@@ -32,7 +32,6 @@ graph TB
 
     subgraph "External Services"
         NOTIFY_CLIENT[Notification Client<br/>- Retry Logic<br/>- Exponential Backoff]
-        MOCK_SERVER[Mock Notification Server<br/>:9090/api/notify]
         GREENBONE_SERVER[Greenbone Notification<br/>:8080/api/notify]
     end
 
@@ -48,8 +47,7 @@ graph TB
     SERVICE --> REPO
     SERVICE --> NOTIFY_CLIENT
     REPO --> DB
-    NOTIFY_CLIENT -.-> MOCK_SERVER
-    NOTIFY_CLIENT -.-> GREENBONE_SERVER
+    NOTIFY_CLIENT --> GREENBONE_SERVER
     
     SERVICE --> COMPUTER_MODEL
     REPO --> COMPUTER_MODEL
@@ -66,92 +64,20 @@ graph TB
     class ROUTER,MIDDLEWARE,HANDLERS httpLayer
     class SERVICE businessLayer
     class REPO,DB dataLayer
-    class NOTIFY_CLIENT,MOCK_SERVER,GREENBONE_SERVER externalLayer
+    class NOTIFY_CLIENT,GREENBONE_SERVER externalLayer
     class COMPUTER_MODEL modelLayer
 ```
 
-## API Flow Diagram
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Handler
-    participant Service
-    participant Repository
-    participant Database
-    participant NotificationClient
-    participant NotificationServer
-
-    Note over Client,NotificationServer: Create Computer Flow
-
-    Client->>Handler: POST /api/computers
-    Handler->>Service: CreateComputer(computer)
-    
-    Service->>Service: validateComputer()
-    Service->>Repository: CountByEmployee(abbr)
-    Repository->>Database: SELECT COUNT(*) WHERE employee_abbreviation = ?
-    Database-->>Repository: currentCount
-    Repository-->>Service: currentCount
-    
-    Service->>Repository: Create(computer)
-    Repository->>Database: INSERT INTO computers
-    Database-->>Repository: success
-    Repository-->>Service: success
-    
-    alt currentCount + 1 >= 3
-        Service->>NotificationClient: SendNotification() [async]
-        NotificationClient->>NotificationServer: POST /api/notify
-        Note over NotificationClient,NotificationServer: Retry with exponential backoff
-        NotificationServer-->>NotificationClient: 200 OK
-    end
-    
-    Service-->>Handler: success
-    Handler-->>Client: 201 Created + computer data
-
-    Note over Client,NotificationServer: Get Computers Flow
-
-    Client->>Handler: GET /api/computers
-    Handler->>Service: GetAllComputers()
-    Service->>Repository: GetAll()
-    Repository->>Database: SELECT * FROM computers
-    Database-->>Repository: computers[]
-    Repository-->>Service: computers[]
-    Service-->>Handler: computers[]
-    Handler-->>Client: 200 OK + computers data
-
-    Note over Client,NotificationServer: Update Computer (Reassign) Flow
-
-    Client->>Handler: PUT /api/computers/{id}
-    Handler->>Service: UpdateComputer(computer)
-    Service->>Repository: GetByID(id)
-    Repository->>Database: SELECT * FROM computers WHERE id = ?
-    Database-->>Repository: existingComputer
-    Repository-->>Service: existingComputer
-    
-    Service->>Service: validateComputer()
-    Service->>Repository: Update(computer)
-    Repository->>Database: UPDATE computers SET ... WHERE id = ?
-    Database-->>Repository: success
-    Repository-->>Service: success
-    
-    alt employee changed AND newEmployee != ""
-        Service->>Repository: CountByEmployee(newEmployee)
-        Repository->>Database: SELECT COUNT(*) WHERE employee_abbreviation = ?
-        Database-->>Repository: count
-        Repository-->>Service: count
-        
-        alt count >= 3
-            Service->>NotificationClient: SendNotification() [async]
-            NotificationClient->>NotificationServer: POST /api/notify
-            NotificationServer-->>NotificationClient: 200 OK
-        end
-    end
-    
-    Service-->>Handler: success
-    Handler-->>Client: 200 OK + updated computer
-```
-
 ## Quick Start
+
+### Docker Setup (Recommended)
+```bash
+# Clean up any existing containers
+docker-compose down --volumes
+
+# Start all services
+docker-compose up --build
+```
 
 ### Local Development
 ```bash
@@ -160,16 +86,24 @@ git clone <repository-url>
 cd computer-management-api
 go mod tidy
 
-# Run with SQLite (default)
-go run cmd/api/main.go
+# Set environment variables to point to Greenbone service
+export NOTIFICATION_URL=http://localhost:8080
+export PORT=8081
+export DB_TYPE=sqlite
+export DATABASE_URL=computers.db
 
-# Run mock notification server (separate terminal)
-go run cmd/mock-notify/main.go
+# Run API (Greenbone service should be running on port 8080)
+go run cmd/api/main.go
 ```
 
-### Docker Setup
+## Greenbone Integration
+
+This API is designed to work with the Greenbone `exercise-admin-notification` service:
+
 ```bash
-docker-compose up --build
+# Pull and run Greenbone notification service
+docker pull greenbone/exercise-admin-notification
+docker run -p 8080:8080 greenbone/exercise-admin-notification
 ```
 
 ## API Endpoints
@@ -188,7 +122,7 @@ docker-compose up --build
 
 ### Create Computer
 ```bash
-curl -X POST http://localhost:8080/api/computers \
+curl -X POST http://localhost:8081/api/computers \
   -H "Content-Type: application/json" \
   -d '{
     "mac_address": "00:11:22:33:44:55",
@@ -199,16 +133,11 @@ curl -X POST http://localhost:8080/api/computers \
   }'
 ```
 
-### Get All Computers
+### Test Greenbone Notification Integration
 ```bash
-curl http://localhost:8080/api/computers
-```
-
-### Test 3-Computer Notification
-```bash
-# Create 3 computers for employee "mmu" to trigger notification
+# Create 3 computers for employee "mmu" to trigger Greenbone notification
 for i in {1..3}; do
-  curl -X POST http://localhost:8080/api/computers \
+  curl -X POST http://localhost:8081/api/computers \
     -H "Content-Type: application/json" \
     -d "{
       \"mac_address\": \"00:11:22:33:44:0$i\",
@@ -217,22 +146,19 @@ for i in {1..3}; do
       \"employee_abbreviation\": \"mmu\",
       \"description\": \"Test computer $i\"
     }"
+  echo "Created computer $i"
+  sleep 1
 done
+
+# Check Greenbone service logs for notification receipt
+docker-compose logs greenbone-notification
 ```
-
-## Data Model
-
-**Computer:**
-- MAC Address (required, 17 chars, unique)
-- Computer Name (required, max 100 chars)
-- IP Address (required, max 15 chars)
-- Employee Abbreviation (optional, exactly 3 lowercase letters)
-- Description (optional, max 500 chars)
 
 ## Notification System
 
-When an employee is assigned 3+ computers, the system sends a notification:
+When an employee is assigned 3+ computers, the system sends a notification to the Greenbone service:
 
+**Notification Format (Greenbone Compatible):**
 ```json
 {
   "level": "warning",
@@ -241,10 +167,11 @@ When an employee is assigned 3+ computers, the system sends a notification:
 }
 ```
 
-Features:
-- Automatic triggering on 3+ computer assignment
+**Features:**
+- Automatic triggering on 3+ computer assignment  
 - Retry logic with exponential backoff
-- Mock notification server included for testing
+- Full compatibility with Greenbone `exercise-admin-notification` service
+- Notifications sent to `POST /api/notify` endpoint
 
 ## Configuration
 
@@ -252,14 +179,8 @@ Features:
 |---------------------|-------------|---------|
 | `DB_TYPE` | Database type (sqlite/postgres) | `sqlite` |
 | `DATABASE_URL` | Database connection string | `computers.db` |
-| `NOTIFICATION_URL` | Notification service URL | `http://localhost:9090` |
-| `PORT` | Server port | `8080` |
-(
-➜  export DB_TYPE=sqlite
-➜  export DATABASE_URL=computers.db
-➜  export NOTIFICATION_URL=http://localhost:9090
-➜  export PORT=8080
-)
+| `NOTIFICATION_URL` | Greenbone notification service URL | `http://localhost:8080` |
+| `PORT` | API server port | `8081` |
 
 ## Testing
 
@@ -278,8 +199,7 @@ go test ./pkg/services/
 
 ```
 ├── cmd/
-│   ├── api/main.go          # Main API server
-│   └── mock-notify/main.go  # Mock notification server
+│   └── api/main.go          # Main API server
 ├── pkg/
 │   ├── handlers/            # HTTP handlers
 │   ├── services/            # Business logic
@@ -289,3 +209,13 @@ go test ./pkg/services/
 ├── docker-compose.yml       # Docker services
 └── Dockerfile              # Container build
 ```
+
+## Greenbone Compatibility
+
+This API is fully compatible with the Greenbone `exercise-admin-notification` service:
+
+- ✅ Correct notification format
+- ✅ Proper HTTP POST to `/api/notify`
+- ✅ Required JSON fields: `level`, `employeeAbbreviation`, `message`
+- ✅ Retry logic for reliability
+- ✅ Docker integration ready

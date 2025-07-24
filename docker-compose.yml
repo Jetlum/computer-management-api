@@ -11,34 +11,25 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d computers"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+
+  greenbone-notification:
+    image: greenbone/exercise-admin-notification
+    ports:
+      - "8080:8080"
 
   api:
     build: .
     ports:
-      - "8080:8080"
+      - "8081:8081"
     environment:
       DB_TYPE: postgres
       DATABASE_URL: "host=postgres user=admin password=password dbname=computers port=5432 sslmode=disable"
-      NOTIFICATION_URL: http://mock-notify:9090
-      PORT: 8080
+      NOTIFICATION_URL: http://greenbone-notification:8080
+      PORT: 8081
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
+      - greenbone-notification
     restart: unless-stopped
-
-  mock-notify:
-    build:
-      context: .
-      dockerfile: Dockerfile.mock
-    ports:
-      - "9090:9090"
-    environment:
-      PORT: 9090
 
 volumes:
   postgres_data:
