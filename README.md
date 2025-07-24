@@ -8,6 +8,8 @@ This API allows system administrators to track company-issued computers, assign 
 
 ## Architecture Diagram
 
+- Right now we are using the Mermaid diagram extensively to present the architecture, so thought this could be a nice touch
+
 ```mermaid
 graph TB
     subgraph "Client Layer"
