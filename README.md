@@ -1,6 +1,6 @@
 # Computer Management API
 
-A REST API for managing company-issued computers built with Go, GORM, and PostgreSQL/SQLite. Integrates with Greenbone notification service.
+A REST API for managing company computers built with Go, GORM, and PostgreSQL/SQLite. Integrates with Greenbone notification service.
 
 ## Overview
 
@@ -98,27 +98,24 @@ go run cmd/api/main.go
 
 ## Greenbone Integration
 
-This API is designed to work with the Greenbone `exercise-admin-notification` service:
+This API works with `exercise-admin-notification`(https://github.com/greenbone/exercise-admin-notification) service:
 
 ```bash
-# Pull and run Greenbone notification service
 docker pull greenbone/exercise-admin-notification
 docker run -p 8080:8080 greenbone/exercise-admin-notification
 ```
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/computers` | Create a new computer |
-| GET | `/api/computers` | Get all computers |
-| GET | `/api/computers/{id}` | Get computer by ID |
-| PUT | `/api/computers/{id}` | Update computer |
-| DELETE | `/api/computers/{id}` | Delete computer |
-| GET | `/api/employees/{abbr}/computers` | Get computers by employee |
-| GET | `/api/health` | Health check |
+POST  `/api/computers` - Create a new computer
+GET `/api/computers` - Get all computers
+GET `/api/computers/{id}` - Get computer by ID
+PUT `/api/computers/{id}` - Update computer
+DELETE `/api/computers/{id}` - Delete computer
+GET `/api/employees/{abbr}/computers` - Get computers by employee
+GET `/api/health` | Health check |
 
-## Usage Examples
+## How to use it
 
 ### Create Computer
 ```bash
@@ -133,9 +130,9 @@ curl -X POST http://localhost:8081/api/computers \
   }'
 ```
 
-### Test Greenbone Notification Integration
+### Test Notification
 ```bash
-# Create 3 computers for employee "mmu" to trigger Greenbone notification
+# Create 3 computers for employee "mmu" to trigger the notification
 for i in {1..3}; do
   curl -X POST http://localhost:8081/api/computers \
     -H "Content-Type: application/json" \
@@ -149,16 +146,13 @@ for i in {1..3}; do
   echo "Created computer $i"
   sleep 1
 done
-
-# Check Greenbone service logs for notification receipt
-docker-compose logs greenbone-notification
 ```
 
 ## Notification System
 
-When an employee is assigned 3+ computers, the system sends a notification to the Greenbone service:
+When an employee is assigned 3+ computers, the system sends a notification to the notification service:
 
-**Notification Format (Greenbone Compatible):**
+**Format:**
 ```json
 {
   "level": "warning",
@@ -167,20 +161,14 @@ When an employee is assigned 3+ computers, the system sends a notification to th
 }
 ```
 
-**Features:**
-- Automatic triggering on 3+ computer assignment  
-- Retry logic with exponential backoff
-- Full compatibility with Greenbone `exercise-admin-notification` service
-- Notifications sent to `POST /api/notify` endpoint
-
 ## Configuration
 
-| Environment Variable | Description | Default |
-|---------------------|-------------|---------|
-| `DB_TYPE` | Database type (sqlite/postgres) | `sqlite` |
-| `DATABASE_URL` | Database connection string | `computers.db` |
-| `NOTIFICATION_URL` | Greenbone notification service URL | `http://localhost:8080` |
-| `PORT` | API server port | `8081` |
+### Environment Variables
+
+`DB_TYPE` - Database type (sqlite/postgres) `sqlite`
+`DATABASE_URL` - Database connection string `computers.db`
+`NOTIFICATION_URL` - Greenbone notification service URL `http://localhost:8080`
+`PORT` - API server port `8081`
 
 ## Testing
 
@@ -209,13 +197,3 @@ go test ./pkg/services/
 ├── docker-compose.yml       # Docker services
 └── Dockerfile              # Container build
 ```
-
-## Greenbone Compatibility
-
-This API is fully compatible with the Greenbone `exercise-admin-notification` service:
-
-- ✅ Correct notification format
-- ✅ Proper HTTP POST to `/api/notify`
-- ✅ Required JSON fields: `level`, `employeeAbbreviation`, `message`
-- ✅ Retry logic for reliability
-- ✅ Docker integration ready
