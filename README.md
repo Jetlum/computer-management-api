@@ -110,12 +110,18 @@ docker run -p 8080:8080 greenbone/exercise-admin-notification
 ## API Endpoints
 
 POST  `/api/computers` - Create a new computer
+
 GET `/api/computers` - Get all computers
+
 GET `/api/computers/{id}` - Get computer by ID
+
 PUT `/api/computers/{id}` - Update computer
+
 DELETE `/api/computers/{id}` - Delete computer
+
 GET `/api/employees/{abbr}/computers` - Get computers by employee
-GET `/api/health` | Health check |
+
+GET `/api/health` - Health check 
 
 ## How to use it
 
@@ -168,8 +174,11 @@ When an employee is assigned 3+ computers, the system sends a notification to th
 ### Environment Variables
 
 `DB_TYPE` - Database type (sqlite/postgres) `sqlite`
+
 `DATABASE_URL` - Database connection string `computers.db`
+
 `NOTIFICATION_URL` - Greenbone notification service URL `http://localhost:8080`
+
 `PORT` - API server port `8081`
 
 ## Testing
